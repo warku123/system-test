@@ -44,6 +44,11 @@ TROND_VERSION="${TROND_VERSION:-v0.1.0}"
 TROND_RELEASE_URL="${TROND_RELEASE_URL:-https://github.com/warku123/tron-deployment/releases/download/${TROND_VERSION}/trond_0.1.0_linux_amd64.tar.gz}"
 TROND_SHA256="${TROND_SHA256:-4daf69f4a438000d60cd58b750580d89c246114de1a44e8c93a2aa0d843bd3a9}"
 TROND_BIN="${TROND_BIN:-/usr/local/bin/trond}"
+# The intent file lives inside the release archive's examples/ dir;
+# we install it to a known absolute path so the embedded `system-test`
+# recipe can be invoked from any CWD without its relative-path default
+# tripping up. Override TROND_INTENT to point at a customized intent.
+TROND_INTENT="${TROND_INTENT:-/usr/local/share/trond/examples/system-test-singlenode-intent.yaml}"
 STEST_NODE_NAME="${STEST_NODE_NAME:-stest-singlenode}"
 STEST_INSTALL_PATH="${STEST_INSTALL_PATH:-/opt/tron/${STEST_NODE_NAME}}"
 
@@ -65,10 +70,10 @@ if ! command -v curl >/dev/null 2>&1; then
   fail "curl not available — needed to download trond release" 2
 fi
 
-# --- install trond ------------------------------------------------
+# --- install trond + intent yaml -----------------------------------
 
-if [ -x "$TROND_BIN" ] && "$TROND_BIN" version >/dev/null 2>&1; then
-  log "trond already installed at $TROND_BIN"
+if [ -x "$TROND_BIN" ] && [ -r "$TROND_INTENT" ] && "$TROND_BIN" version >/dev/null 2>&1; then
+  log "trond + intent already installed ($TROND_BIN, $TROND_INTENT)"
   "$TROND_BIN" version
 else
   log "downloading trond $TROND_VERSION from $TROND_RELEASE_URL"
@@ -89,9 +94,14 @@ else
   if [ ! -x "$TMPDIR/trond" ]; then
     fail "extracted archive missing trond binary" 3
   fi
+  if [ ! -r "$TMPDIR/examples/system-test-singlenode-intent.yaml" ]; then
+    fail "extracted archive missing examples/system-test-singlenode-intent.yaml" 3
+  fi
 
   sudo install -m 0755 "$TMPDIR/trond" "$TROND_BIN"
+  sudo install -m 0644 -D "$TMPDIR/examples/system-test-singlenode-intent.yaml" "$TROND_INTENT"
   log "installed: $($TROND_BIN version)"
+  log "installed intent: $TROND_INTENT"
 fi
 
 # --- preflight ---------------------------------------------------
@@ -113,8 +123,13 @@ sudo ls -lah "$STEST_INSTALL_PATH/FullNode.jar"
 
 # --- run trond recipe ------------------------------------------------
 
-log "running 'trond recipe run system-test'"
-sudo "$TROND_BIN" recipe run system-test --param "name=$STEST_NODE_NAME" --wait
+# Recipe internals already include `apply --wait --wait-timeout 5m`; the
+# `--wait` flag does NOT exist on `recipe run` itself. We pass intent_path
+# as an absolute file so the recipe's relative-path default
+# (examples/system-test-singlenode-intent.yaml, resolved against CWD)
+# does not bite when invoked from $GITHUB_WORKSPACE in CI.
+log "running 'trond recipe run system-test --param intent_path=$TROND_INTENT'"
+sudo "$TROND_BIN" recipe run system-test --param "intent_path=$TROND_INTENT"
 
 # --- verify HTTP endpoint responding ---------------------------------
 
