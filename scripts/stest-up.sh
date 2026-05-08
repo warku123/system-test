@@ -114,11 +114,31 @@ for port in 8090 50051 8545 18888; do
 done
 log "preflight: ports 8090/50051/8545/18888 free"
 
+# --- ensure tron system user exists ---------------------------------
+
+# trond renders the systemd unit with `User=tron` (the default
+# system_user for jar runtime). On stock GitHub Actions ubuntu-latest
+# runners that user does not exist, so systemd aborts the service with
+# "Failed to determine user credentials" (status=217/USER) and
+# restart-loops indefinitely. Create a no-login system account so the
+# unit can start.
+if ! getent passwd tron >/dev/null 2>&1; then
+  log "creating tron system user (was missing on this runner)"
+  sudo useradd --system --no-create-home --home /nonexistent --shell /usr/sbin/nologin tron
+else
+  log "tron user already present"
+fi
+
 # --- pre-place jar --------------------------------------------------
 
 log "placing jar at $STEST_INSTALL_PATH/FullNode.jar"
 sudo mkdir -p "$STEST_INSTALL_PATH"
 sudo cp "$STEST_JAR" "$STEST_INSTALL_PATH/FullNode.jar"
+# Hand the install path to the tron user so the service (which runs as
+# User=tron) can create output-directory/database, logs/, etc. The
+# config file that trond writes here later stays root:root with mode
+# 0644 — read-only access from tron is sufficient.
+sudo chown -R tron:tron "$STEST_INSTALL_PATH"
 sudo ls -lah "$STEST_INSTALL_PATH/FullNode.jar"
 
 # --- diagnostic preflight (text mode) -------------------------------
