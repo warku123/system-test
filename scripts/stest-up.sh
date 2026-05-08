@@ -129,6 +129,36 @@ else
   log "tron user already present"
 fi
 
+# --- repoint /usr/bin/java to JDK 8 ---------------------------------
+
+# trond's systemd unit hard-codes ExecStart=/usr/bin/java (a
+# render-time constant in internal/render/systemd.go), regardless of
+# JAVA_HOME. On GitHub Actions ubuntu-latest runners /usr/bin/java is
+# the preinstalled JDK 17, but the GreatVoyage java-tron jar performs
+# an arch+JDK self-check at startup and refuses to run on amd64
+# unless the JVM is JDK 8:
+#
+#   Java 1.8 is required for amd64 architecture. Detected version 17
+#
+# setup-java@v5 installs JDK 8 under $JAVA_HOME but leaves
+# /usr/bin/java pointing at JDK 17. Repoint /usr/bin/java to the
+# JDK-8 binary so systemd's restart loop picks the right JVM.
+# Production hosts that follow `trond bootstrap` do not need this —
+# bootstrap installs JDK 17 (which is fine for jars that do not have
+# this self-check) and the host's package manager makes it the
+# system java. This is GHA-runner-specific glue.
+if [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/java" ]; then
+  CUR_JAVA="$(readlink -f /usr/bin/java 2>/dev/null || true)"
+  WANT_JAVA="$JAVA_HOME/bin/java"
+  if [ "$CUR_JAVA" != "$WANT_JAVA" ]; then
+    log "repointing /usr/bin/java -> $WANT_JAVA (was $CUR_JAVA)"
+    sudo ln -sf "$WANT_JAVA" /usr/bin/java
+  fi
+  log "/usr/bin/java now reports: $(/usr/bin/java -version 2>&1 | head -1)"
+else
+  log "WARNING: JAVA_HOME unset or invalid; /usr/bin/java unchanged ($(/usr/bin/java -version 2>&1 | head -1 || echo 'not found'))"
+fi
+
 # --- pre-place jar --------------------------------------------------
 
 log "placing jar at $STEST_INSTALL_PATH/FullNode.jar"
