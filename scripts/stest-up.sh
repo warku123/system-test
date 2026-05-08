@@ -121,6 +121,18 @@ sudo mkdir -p "$STEST_INSTALL_PATH"
 sudo cp "$STEST_JAR" "$STEST_INSTALL_PATH/FullNode.jar"
 sudo ls -lah "$STEST_INSTALL_PATH/FullNode.jar"
 
+# --- diagnostic preflight (text mode) -------------------------------
+
+# Run preflight standalone with the default text output FIRST so the
+# CI log shows which specific check passed/failed. The recipe runs
+# every step with `--output json`, which collapses a failure to a
+# bare error envelope — useful for machine consumers, opaque for
+# debugging.
+log "running 'trond preflight' (text mode, diagnostic)"
+if ! sudo "$TROND_BIN" preflight --intent "$TROND_INTENT"; then
+  fail "trond preflight reported a failure (see ✗ rows above)" 4
+fi
+
 # --- run trond recipe ------------------------------------------------
 
 # Recipe internals already include `apply --wait --wait-timeout 5m`; the
