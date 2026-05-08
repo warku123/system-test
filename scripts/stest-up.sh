@@ -40,9 +40,9 @@
 
 set -euo pipefail
 
-TROND_VERSION="${TROND_VERSION:-v0.1.0}"
-TROND_RELEASE_URL="${TROND_RELEASE_URL:-https://github.com/warku123/tron-deployment/releases/download/${TROND_VERSION}/trond_0.1.0_linux_amd64.tar.gz}"
-TROND_SHA256="${TROND_SHA256:-4daf69f4a438000d60cd58b750580d89c246114de1a44e8c93a2aa0d843bd3a9}"
+TROND_VERSION="${TROND_VERSION:-v0.1.1}"
+TROND_RELEASE_URL="${TROND_RELEASE_URL:-https://github.com/warku123/tron-deployment/releases/download/${TROND_VERSION}/trond_0.1.1_linux_amd64.tar.gz}"
+TROND_SHA256="${TROND_SHA256:-d704906d3f5667ca945dadc92be781c463c1a22376f6e2de6dd5bbcd07499418}"
 TROND_BIN="${TROND_BIN:-/usr/local/bin/trond}"
 # The intent file lives inside the release archive's examples/ dir;
 # we install it to a known absolute path so the embedded `system-test`
