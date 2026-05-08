@@ -171,27 +171,35 @@ sudo cp "$STEST_JAR" "$STEST_INSTALL_PATH/FullNode.jar"
 sudo chown -R tron:tron "$STEST_INSTALL_PATH"
 sudo ls -lah "$STEST_INSTALL_PATH/FullNode.jar"
 
-# --- diagnostic preflight (text mode) -------------------------------
+# --- run trond apply + verify (NOT via recipe) ----------------------
 
-# Run preflight standalone with the default text output FIRST so the
-# CI log shows which specific check passed/failed. The recipe runs
-# every step with `--output json`, which collapses a failure to a
-# bare error envelope — useful for machine consumers, opaque for
-# debugging.
-log "running 'trond preflight' (text mode, diagnostic)"
-if ! sudo "$TROND_BIN" preflight --intent "$TROND_INTENT"; then
-  fail "trond preflight reported a failure (see ✗ rows above)" 4
-fi
+# We deliberately do NOT use `trond recipe run system-test` because the
+# recipe's apply step passes `--wait`, which calls trond's
+# WaitForReady (internal/apply/wait.go). That function hard-codes
+# `docker exec <name> curl ...` and does not branch on the deployed
+# runtime. For our jar-mode deployment there is no container with
+# that name, so the probe fails for the entire wait window and apply
+# returns WAIT_TIMEOUT.
+#
+# We expand the recipe inline, dropping --wait. `trond verify`
+# (cmd/verify.go) uses tgt.Exec("curl", ...) directly — no docker
+# exec wrapper — and works correctly for jar runtime, so it takes
+# over the readiness gate.
+#
+# Tracked as a trond bug (WaitForReady should branch on runtime, like
+# probe.go already does); will be fixed in a follow-up trond release.
 
-# --- run trond recipe ------------------------------------------------
+log "trond config validate"
+sudo "$TROND_BIN" config validate "$TROND_INTENT"
 
-# Recipe internals already include `apply --wait --wait-timeout 5m`; the
-# `--wait` flag does NOT exist on `recipe run` itself. We pass intent_path
-# as an absolute file so the recipe's relative-path default
-# (examples/system-test-singlenode-intent.yaml, resolved against CWD)
-# does not bite when invoked from $GITHUB_WORKSPACE in CI.
-log "running 'trond recipe run system-test --param intent_path=$TROND_INTENT'"
-sudo "$TROND_BIN" recipe run system-test --param "intent_path=$TROND_INTENT"
+log "trond preflight"
+sudo "$TROND_BIN" preflight --intent "$TROND_INTENT"
+
+log "trond apply (without --wait; verify gates readiness instead)"
+sudo "$TROND_BIN" apply --intent "$TROND_INTENT" --auto-approve
+
+log "trond verify (polls /wallet/getnowblock until block_height > 0, max 5m)"
+sudo "$TROND_BIN" verify --intent "$TROND_INTENT" --timeout 5m
 
 # --- verify HTTP endpoint responding ---------------------------------
 
